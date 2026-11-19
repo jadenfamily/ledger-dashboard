@@ -1018,7 +1018,7 @@
   }
   async function aiSyncShared() {
     if (!cloud.conn || !cloud.me) return;
-    var local = String(lsGet(KEY_KEY) || '').trim();
+    var local = String(lsGet(KEY_KEY) || lsGet(KEY_FALLBACK) || '').trim();
     var st = aiState();
     var next = { source: st.source || '', updatedAt: st.updatedAt || '', at: Date.now(), note: '' };
     var r = null;
@@ -1031,7 +1031,7 @@
     if (r.missing) {
       if (local && canEdit()) {
         var up = await aiPush(local);
-        if (up.ok) { next.source = 'shared'; next.updatedAt = up.updatedAt; next.note = 'uploaded'; }
+        if (up.ok) { lsSet(KEY_SHARED_KEY, local); next.source = 'shared'; next.updatedAt = up.updatedAt; next.note = 'uploaded'; }
         else { next.source = 'local'; next.note = up.error || 'error'; }
       } else {
         next.source = local ? 'local' : 'none';
@@ -1055,7 +1055,7 @@
     }
     if (local && st.source === 'local' && st.updatedAt && (!remoteAt || st.updatedAt > remoteAt) && canEdit()) {
       var up2 = await aiPush(local);
-      if (up2.ok) { next.source = 'shared'; next.updatedAt = up2.updatedAt; }
+      if (up2.ok) { lsSet(KEY_SHARED_KEY, local); next.source = 'shared'; next.updatedAt = up2.updatedAt; }
       else { next.source = 'local'; next.note = up2.error || 'error'; }
       aiSetState(next); renderSettings(); return;
     }
