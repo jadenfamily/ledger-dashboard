@@ -316,6 +316,9 @@
   .gate-form input{ min-height:42px; border-radius:11px; border:2px solid #ece2d2; background:#fffdf8; padding:6px 10px; font-size:13px; font-weight:800; }
   .gate-msg{ margin:0; font-size:11.5px; font-weight:800; color:#c33f57; min-height:14px; }
   .gate-hint{ margin:12px 0 0; font-size:10.5px; font-weight:700; color:#a2967f; line-height:1.6; }
+  .lock-icon{ font-size:40px; line-height:1; margin-bottom:12px; }
+  .lock-card h1{ margin:0 0 7px; font-size:19px; font-weight:900; letter-spacing:-.02em; }
+  .lock-who{ margin:12px 0 0; font-size:11px; font-weight:800; color:#a2967f; line-height:1.6; }
 
   /* ---------- 시트 ---------- */
   .sheet{
@@ -474,6 +477,16 @@
       <p class="gate-msg" id="gMsg"></p>
     </form>
     <p class="gate-hint">연결 정보와 로그인 상태는 같은 주소(jadenfamily.github.io)의 브라우저 저장소를 가족 대시보드와 함께 써요. 내역은 가족 전용 저장소 <b>kids-dashboard-data</b>의 <code>ledger/</code>에만 보관돼요.</p>
+  </div>
+</div>
+
+<div class="gate" id="lockScreen" hidden>
+  <div class="gate-card lock-card">
+    <div class="lock-icon" aria-hidden="true">🔒</div>
+    <h1>접근 권한이 없는 대시보드예요</h1>
+    <p class="gate-note">가족 허브에서 허용된 대시보드를 열어 주세요.</p>
+    <a class="gate-btn" href="../home/">🏠 가족 허브로 가기</a>
+    <p class="lock-who" id="lockWho"></p>
   </div>
 </div>
 
@@ -887,7 +900,7 @@
     if (!j || !j.id) return null;
     var exp = Number(j.expiresAt) || 0;
     if (store === 'local' && (!exp || exp <= Date.now())) { lsDel(SESSION_KEY); return null; }
-    return { id: String(j.id), name: String(j.name || j.id), role: ROLES[j.role] ? j.role : 'viewer', store: store, expiresAt: exp };
+    return { id: String(j.id), name: String(j.name || j.id), role: ROLES[j.role] ? j.role : 'viewer', dashboards: Object.prototype.toString.call(j.dashboards) === '[object Array]' ? j.dashboards : null, store: store, expiresAt: exp };
   }
   function cachedUsers() {
     try {
@@ -2789,12 +2802,49 @@
      ============================================================ */
   function showGate(mode, msg) {
     $('appRoot').hidden = true;
+    if ($('lockScreen')) $('lockScreen').hidden = true;
     $('gateScreen').hidden = false;
     var m = $('gateMsg');
     if (m && msg) m.textContent = msg;
     else if (m && mode === 'setup') m.textContent = '가족 허브에서 기기를 연결하면 가계부가 열려요.';
     else if (m) m.textContent = '가족 허브에서 로그인하면 여기서도 바로 이어서 쓸 수 있어요.';
     renderSyncPill();
+  }
+
+  /* 계정별 대시보드 접근 권한 — 가족 허브(/home/)의 👥 계정 설정과 같은 규칙이에요. */
+  var DASH_ID = 'ledger';
+  var DASH_IDS = ['kids', 'fridge', 'ledger'];
+  var DASH_DEFAULTS = {
+    admin: ['kids', 'fridge', 'ledger'],
+    parent: ['kids', 'fridge', 'ledger'],
+    viewer: ['kids', 'fridge', 'ledger'],
+    child: ['kids']
+  };
+  function dashboardsFor(u) {
+    if (!u) return [];
+    if (u.role === 'admin') return DASH_IDS.slice();
+    if (Object.prototype.toString.call(u.dashboards) === '[object Array]') {
+      var out = [];
+      for (var i = 0; i < u.dashboards.length; i++) {
+        var id = String(u.dashboards[i] == null ? '' : u.dashboards[i]);
+        if (DASH_IDS.indexOf(id) >= 0 && out.indexOf(id) < 0) out.push(id);
+      }
+      return out;
+    }
+    var def = DASH_DEFAULTS[u.role] || DASH_IDS;
+    return def.slice();
+  }
+  function dashAllowed(u) { return dashboardsFor(u).indexOf(DASH_ID) >= 0; }
+
+  function showLock() {
+    $('appRoot').hidden = true;
+    $('gateScreen').hidden = true;
+    $('lockScreen').hidden = false;
+    var who = $('lockWho');
+    if (who) {
+      who.textContent = (cloud.me ? ((cloud.me.name || cloud.me.id) + ' 계정은 이 대시보드를 열 수 없어요.') : '') +
+        ' 허브에서 관리자에게 요청해 주세요.';
+    }
   }
 
   async function boot() {
@@ -2823,19 +2873,21 @@
         showGate('login', '계정 정보를 찾을 수 없어요. 가족 허브에서 다시 로그인해 주세요.');
         return;
       }
-      cloud.me = { id: u.id, name: u.name || u.id, role: ROLES[u.role] ? u.role : 'viewer' };
+      cloud.me = { id: u.id, name: u.name || u.id, role: ROLES[u.role] ? u.role : 'viewer', dashboards: dashboardsFor(u) };
     } else {
       var cached = cachedUsers();
       var uc = cached ? findIn(cached.users, sess.id) : null;
-      if (cached && uc) cloud.me = { id: uc.id, name: uc.name || uc.id, role: ROLES[uc.role] ? uc.role : 'viewer' };
-      else cloud.me = { id: sess.id, name: sess.name, role: sess.role };
+      if (cached && uc) cloud.me = { id: uc.id, name: uc.name || uc.id, role: ROLES[uc.role] ? uc.role : 'viewer', dashboards: dashboardsFor(uc) };
+      else cloud.me = { id: sess.id, name: sess.name, role: sess.role, dashboards: dashboardsFor(sess) };
     }
+    if (!dashAllowed(cloud.me)) { showLock(); return; }
     enterApp();
   }
 
   function enterApp() {
     lsSet(HUB_LAST_KEY, 'ledger');
     $('gateScreen').hidden = true;
+    if ($('lockScreen')) $('lockScreen').hidden = true;
     $('appRoot').hidden = false;
     applyUserUi();
     renderAll();
