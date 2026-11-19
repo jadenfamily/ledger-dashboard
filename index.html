@@ -318,10 +318,16 @@
   .gate-hint{ margin:12px 0 0; font-size:10.5px; font-weight:700; color:#a2967f; line-height:1.6; }
 
   /* ---------- 시트 ---------- */
-  .sheet{ position:fixed; inset:0; z-index:80; background:rgba(46,42,36,.44); display:flex; align-items:flex-end; justify-content:center; padding:0; }
+  .sheet{
+    position:fixed; inset:0; z-index:80; background:rgba(46,42,36,.44);
+    display:flex; align-items:flex-end; justify-content:center; padding:0;
+    overflow:hidden; overscroll-behavior:contain; touch-action:none;
+  }
   .sheet-card{
-    width:100%; max-width:520px; max-height:92vh; overflow:auto; background:#fff;
+    width:100%; max-width:520px; background:#fff;
     border-radius:24px 24px 0 0; box-shadow:0 -10px 40px rgba(0,0,0,.22); padding:16px 16px calc(18px + env(safe-area-inset-bottom));
+    max-height:92vh; max-height:calc(100dvh - 36px);
+    overflow-y:auto; -webkit-overflow-scrolling:touch; overscroll-behavior:contain; touch-action:pan-y;
     animation:up .18s ease;
   }
   .sheet-card.wide{ max-width:760px; }
@@ -642,8 +648,43 @@
     if (t._timer) window.clearTimeout(t._timer);
     t._timer = window.setTimeout(function () { t.className = 'toast'; t.hidden = true; }, 2600);
   }
-  function showModal(id) { var m = $(id); if (m) { m.hidden = false; } }
-  function closeModal(id) { var m = $(id); if (m) m.hidden = true; }
+  /* ---------- iOS Safari 배경 스크롤 잠금 ----------
+     모달이 열려 있는 동안 body를 fixed로 고정해 뒷페이지가 스크롤되지 않게 한다.
+     닫을 때 원래 스크롤 위치로 돌아간다. */
+  var scrollLock = { on: false, y: 0 };
+  var MODAL_SEL = '.sheet:not([hidden])';
+  function lockBodyScroll() {
+    if (scrollLock.on) return;
+    scrollLock.y = window.scrollY || window.pageYOffset || 0;
+    var b = document.body, h = document.documentElement;
+    b.style.position = 'fixed';
+    b.style.top = '-' + scrollLock.y + 'px';
+    b.style.left = '0';
+    b.style.right = '0';
+    b.style.width = '100%';
+    b.style.overflow = 'hidden';
+    h.style.overflow = 'hidden';
+    scrollLock.on = true;
+  }
+  function unlockBodyScroll() {
+    if (!scrollLock.on) return;
+    var b = document.body, h = document.documentElement;
+    b.style.position = '';
+    b.style.top = '';
+    b.style.left = '';
+    b.style.right = '';
+    b.style.width = '';
+    b.style.overflow = '';
+    h.style.overflow = '';
+    scrollLock.on = false;
+    window.scrollTo(0, scrollLock.y);
+  }
+  function syncBodyScrollLock() {
+    if (document.querySelector(MODAL_SEL)) { if (!scrollLock.on) lockBodyScroll(); }
+    else if (scrollLock.on) unlockBodyScroll();
+  }
+  function showModal(id) { var m = $(id); if (m) { m.hidden = false; syncBodyScrollLock(); } }
+  function closeModal(id) { var m = $(id); if (m) m.hidden = true; syncBodyScrollLock(); }
 
   /* ============================================================
      날짜 도우미
@@ -1095,7 +1136,7 @@
     var d = new Date(cloud.statusAt || Date.now());
     if (cloud.saving) return '저장 중…';
     if (anyDirty()) return '저장 대기 중이에요.';
-    if (cloud.status === 'ok') return '마지막 저장 ' + pad2(d.getHours()) + ':' + pad2(d.getMinutes()) + ' · ' + cloud.conn.owner + '/' + cloud.conn.repo;
+    if (cloud.status === 'ok') return '마지막 저장 ' + pad2(d.getHours()) + ':' + pad2(d.getMinutes());
     if (cloud.status === 'offline') return '오프라인 · 이 기기에만 저장 중이에요.';
     if (cloud.status === 'error') return '마지막 저장에 실패했어요. 인터넷과 권한을 확인해 주세요.';
     return '아직 저장 기록이 없어요.';
@@ -2318,7 +2359,7 @@
         '<h3>💾 데이터</h3>' +
         '<p class="hint">' + esc(syncText()) + '</p>' +
         '<div class="modal-acts"><button class="btn sm sub" type="button" data-act="backup-json">JSON 백업</button><button class="btn sm sub" type="button" data-act="csv-all">전체 CSV</button></div>' +
-        '<p class="hint" style="margin-top:6px">기록 ' + state.txns.length + '건 · 저장 위치 <b>' + (cloud.conn ? esc(cloud.conn.owner + '/' + cloud.conn.repo) + ' · ledger/' : '기기') + '</b></p>' +
+        '<p class="hint" style="margin-top:6px">기록 ' + state.txns.length + '건</p>' +
       '</div>' +
       '<div class="sec">' +
         '<h3>👨‍👩‍👧 사용 권한</h3>' +
@@ -2709,6 +2750,7 @@
     if (e.key === 'Escape') {
       var ids = ['txModal', 'fxModal', 'receiptModal', 'sheetModal', 'settingsModal'];
       for (var i = 0; i < ids.length; i++) { var m = $(ids[i]); if (m && !m.hidden) { m.hidden = true; } }
+      syncBodyScrollLock();
     }
     if (e.key === 'Enter' && e.target && e.target.tagName === 'INPUT' && e.target.closest && e.target.closest('.sheet')) {
       var b = e.target.closest('.sheet-body');
@@ -2722,7 +2764,7 @@
   document.addEventListener('click', function (e) {
     if (e.target && e.target.classList && e.target.classList.contains('sheet')) {
       var id = e.target.id;
-      if (id === 'txModal' || id === 'fxModal' || id === 'receiptModal' || id === 'sheetModal' || id === 'settingsModal') e.target.hidden = true;
+      if (id === 'txModal' || id === 'fxModal' || id === 'receiptModal' || id === 'sheetModal' || id === 'settingsModal') { e.target.hidden = true; syncBodyScrollLock(); }
     }
   });
 
