@@ -1,0 +1,10 @@
+# 비밀값·임시 파일은 저장소에 올리지 않아요
+.env
+.env.*
+*.key
+*secret*
+.DS_Store
+node_modules/
+__pycache__/
+.tmp*
+*.bak
