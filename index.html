@@ -306,6 +306,14 @@
   .gate-brand h1{ margin:0; font-size:20px; font-weight:900; letter-spacing:-.03em; }
   .gate-brand p{ margin:2px 0 0; font-size:11.5px; font-weight:800; color:#9a917f; }
   .gate-note{ font-size:13px; font-weight:800; color:#6a6355; margin:0 0 14px; line-height:1.6; }
+  /* 첫 로딩: 게이트 화면을 로딩 안내로만 쓰고, 데이터가 다 온 뒤 앱을 한 번에 연다. */
+  .gate[data-loading="1"] .gate-btn,
+  .gate[data-loading="1"] .gate-link,
+  .gate[data-loading="1"] .gate-form,
+  .gate[data-loading="1"] .gate-hint{ display:none !important; }
+  .gate[data-loading="1"] .gate-note{ display:flex; align-items:center; justify-content:center; gap:9px; min-height:44px; margin:0; font-size:14px; color:#5f5748; }
+  .gate[data-loading="1"] .gate-note::before{ content:''; flex:0 0 auto; width:15px; height:15px; border-radius:50%; border:2.5px solid #e6ddce; border-top-color:#2fbf8f; animation:gateSpin .75s linear infinite; }
+  @keyframes gateSpin{ to{ transform:rotate(360deg); } }
   .gate-btn{
     display:block; width:100%; border:none; border-radius:15px; min-height:50px; padding:0 16px;
     background:linear-gradient(135deg,#2fbf8f,#0f9d76); color:#fff; font-size:15px; font-weight:900;
@@ -457,7 +465,7 @@
   <button class="fab" id="fab" type="button" data-act="tx-add">＋ 기록</button>
 </div>
 
-<div class="gate" id="gateScreen" hidden>
+<div class="gate" id="gateScreen" data-loading="1">
   <div class="gate-card">
     <div class="gate-brand">
       <span class="gate-logo">📒</span>
@@ -466,7 +474,7 @@
         <p>우리 가족만 들어올 수 있어요</p>
       </div>
     </div>
-    <p class="gate-note" id="gateMsg">가족 허브에서 로그인하면 여기서도 바로 이어서 쓸 수 있어요.</p>
+    <p class="gate-note" id="gateMsg">데이터를 불러오는 중…</p>
     <a class="gate-btn" href="../home/"><svg class="hub-ico" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><rect x="1.2" y="1.2" width="5.9" height="5.9" rx="2"/><rect x="8.9" y="1.2" width="5.9" height="5.9" rx="2"/><rect x="1.2" y="8.9" width="5.9" height="5.9" rx="2"/><rect x="8.9" y="8.9" width="5.9" height="5.9" rx="2"/></svg>가족 홈으로 가기</a>
     <button class="gate-link" type="button" data-act="gate-connect">기기가 아직 연결되지 않았나요? 직접 연결하기</button>
     <form class="gate-form" id="gateForm" hidden autocomplete="off">
@@ -554,6 +562,9 @@
   var PATH_TX = 'ledger/transactions.json';
   var PATH_SET = 'ledger/settings.json';
 
+  var WARN_PCT_DEFAULT = 85;   /* 예산 주의 표시 기준(%) */
+  var BOOT_WAIT_MS = 6000;     /* 첫 로딩에서 원격 데이터를 기다리는 최대 시간 */
+
   var GEMINI_MODELS = ['gemini-3.5-flash-lite', 'gemini-3.8-flash', 'gemini-4-hydrogen', 'gemini-3.6-flash', 'gemini-2.5-flash-lite'];
 
   var ROLES = {
@@ -606,7 +617,7 @@
      상태
      ============================================================ */
   function emptySettings() {
-    return { version: 1, updatedAt: '', budgetDefault: 0, budgets: {}, fixedTemplates: [], customCats: { expense: [], fixed: [], income: [] } };
+    return { version: 1, updatedAt: '', budgetDefault: 0, warnPct: WARN_PCT_DEFAULT, budgets: {}, fixedTemplates: [], customCats: { expense: [], fixed: [], income: [] } };
   }
   var state = { txns: [], settings: emptySettings() };
 
@@ -817,6 +828,8 @@
     raw = raw || {};
     var out = emptySettings();
     out.budgetDefault = Math.max(0, Math.round(num(raw.budgetDefault)));
+    var wp = Math.round(num(raw.warnPct));
+    out.warnPct = (wp >= 1 && wp <= 100) ? wp : WARN_PCT_DEFAULT;
     var b = raw.budgets || {};
     for (var k in b) {
       if (!Object.prototype.hasOwnProperty.call(b, k)) continue;
@@ -1176,7 +1189,7 @@
     if (cloud.dirty.settings) {
       jobs.push({
         kind: 'settings', path: PATH_SET, obj: {
-          version: 1, updatedAt: nowIso(), budgetDefault: state.settings.budgetDefault,
+          version: 1, updatedAt: nowIso(), budgetDefault: state.settings.budgetDefault, warnPct: warnPct(),
           budgets: state.settings.budgets, fixedTemplates: state.settings.fixedTemplates, customCats: state.settings.customCats
         }
       });
@@ -1247,6 +1260,12 @@
     if (b[m]) return b[m];
     return state.settings.budgetDefault || 0;
   }
+  /* 설정 화면에서 바꾸는 예산 기준 — state.settings에 저장되고 가족 기기와 함께 동기화된다. */
+  function warnPct() {
+    var v = Math.round(num(state.settings && state.settings.warnPct));
+    return (v >= 1 && v <= 100) ? v : WARN_PCT_DEFAULT;
+  }
+  function budgetDefaultValue() { var v = Math.round(num(state.settings && state.settings.budgetDefault)); return v > 0 ? v : 0; }
   function budgetPct(used, budget) { return budget > 0 ? Math.round(used / budget * 100) : 0; }
 
   function filteredList() {
@@ -1345,7 +1364,7 @@
     var t = monthTotals(m);
     var budget = budgetFor(m);
     var pct = budgetPct(t.expense, budget);
-    var fillCls = pct > 100 ? ' over' : pct >= 85 ? ' warn' : '';
+    var fillCls = pct > 100 ? ' over' : pct >= warnPct() ? ' warn' : '';
     var netCls = t.net < 0 ? 'neg' : 'pos';
     var isThis = m === thisMonth();
     var remain = budget > 0 ? budget - t.expense : 0;
@@ -1976,6 +1995,29 @@
     toast(v > 0 ? monthLabel(ui.month) + ' 예산을 ' + wonW(v) + '로 저장했어요' : '이 달 예산을 지웠어요');
   }
 
+  /* 설정 화면의 예산 기준(기본 월 예산·주의 기준 %) 저장과 기본값 되돌리기 */
+  function saveBudgetDefaults() {
+    if (ui.readOnly) { ui.budMsg = 'err:보기 전용 계정은 바꿀 수 없어요.'; renderSettings(); return; }
+    var bd = Math.max(0, Math.round(num(fieldVal('budgetDefaultInput'))));
+    var wp = Math.round(num(fieldVal('warnPctInput')));
+    if (!(wp >= 1 && wp <= 100)) { ui.budMsg = 'err:주의 기준은 1~100 사이로 넣어 주세요.'; renderSettings(); return; }
+    state.settings.budgetDefault = bd;
+    state.settings.warnPct = wp;
+    ui.budMsg = '저장했어요' + (bd > 0 ? ' · 기본 ' + wonW(bd) : ' · 기본 예산 없음') + ' · 주의 ' + wp + '%';
+    markDirty('settings');
+    renderAll(); renderSettings();
+    toast('💰 예산 기준을 저장했어요');
+  }
+  function resetBudgetDefaults() {
+    if (ui.readOnly) { ui.budMsg = 'err:보기 전용 계정은 바꿀 수 없어요.'; renderSettings(); return; }
+    state.settings.budgetDefault = 0;
+    state.settings.warnPct = WARN_PCT_DEFAULT;
+    ui.budMsg = '기본값으로 되돌렸어요';
+    markDirty('settings');
+    renderAll(); renderSettings();
+    toast('💰 예산 기준을 기본값으로 되돌렸어요');
+  }
+
   /* ============================================================
      CSV / TSV
      ============================================================ */
@@ -2369,6 +2411,17 @@
         (catHtml || '<p class="hint">기본 카테고리를 쓰고 있어요. 자주 쓰는 항목을 추가해 보세요.</p>') +
       '</div>' +
       '<div class="sec">' +
+        '<h3>💰 예산 기준</h3>' +
+        '<p class="hint">이번 달 예산이 정해져 있으면 그 금액을, 없으면 기본 월 예산을 써요. 기본 예산은 매달 새로 시작할 때의 값이에요.</p>' +
+        '<p class="hint" style="margin-top:8px">기본 월 예산 (원)</p>' +
+        '<div class="key-row"><input id="budgetDefaultInput" type="number" inputmode="numeric" min="0" step="10000" placeholder="예: 1500000" value="' + (budgetDefaultValue() || '') + '"' + (ui.readOnly ? ' disabled' : '') + '></div>' +
+        '<p class="hint" style="margin-top:8px">예산 주의 기준 (%)</p>' +
+        '<div class="key-row"><input id="warnPctInput" type="number" inputmode="numeric" min="1" max="100" step="5" placeholder="예: 85" value="' + warnPct() + '"' + (ui.readOnly ? ' disabled' : '') + '></div>' +
+        '<p class="hint" style="margin-top:5px">예산의 ' + warnPct() + '%를 넘으면 주의(노랑), 예산을 넘기면 초과(분홍)로 보여 줘요.</p>' +
+        (ui.readOnly ? '' : '<div class="modal-acts" style="margin-top:7px"><button class="btn sm" type="button" data-act="budget-default-save">저장</button><button class="btn sm ghost" type="button" data-act="budget-default-reset">기본값(예산 없음 · ' + WARN_PCT_DEFAULT + '%)으로</button></div>') +
+        (ui.budMsg ? '<p class="msg ' + (ui.budMsg.indexOf('err:') === 0 ? 'err' : '') + '">' + esc(ui.budMsg.replace(/^err:/, '')) + '</p>' : '') +
+      '</div>' +
+      '<div class="sec">' +
         '<h3>💾 데이터</h3>' +
         '<p class="hint">' + esc(syncText()) + '</p>' +
         '<div class="modal-acts"><button class="btn sm sub" type="button" data-act="backup-json">JSON 백업</button><button class="btn sm sub" type="button" data-act="csv-all">전체 CSV</button></div>' +
@@ -2383,6 +2436,7 @@
   function openSettings() {
     ui.setMsg = '';
     ui.catMsg = '';
+    ui.budMsg = '';
     renderSettings();
     showModal('settingsModal');
     aiSyncShared();
@@ -2712,6 +2766,8 @@
     if (act === 'fx-apply') { applyOneTpl(id); return; }
     if (act === 'fx-fill') { applyAllTpl(); return; }
     if (act === 'budget-save') { saveBudget(); return; }
+    if (act === 'budget-default-save') { saveBudgetDefaults(); return; }
+    if (act === 'budget-default-reset') { resetBudgetDefaults(); return; }
     if (act === 'budget-edit') {
       setTab('fixed');
       window.setTimeout(function () { var el2 = $('budgetInput'); if (el2) { try { el2.focus(); el2.select(); } catch (er) { /* 무시 */ } } }, 120);
@@ -2804,6 +2860,7 @@
     $('appRoot').hidden = true;
     if ($('lockScreen')) $('lockScreen').hidden = true;
     $('gateScreen').hidden = false;
+    $('gateScreen').removeAttribute('data-loading');
     var m = $('gateMsg');
     if (m && msg) m.textContent = msg;
     else if (m && mode === 'setup') m.textContent = '가족 허브에서 기기를 연결하면 가계부가 열려요.';
@@ -2838,7 +2895,7 @@
 
   function showLock() {
     $('appRoot').hidden = true;
-    $('gateScreen').hidden = true;
+    if ($('gateScreen')) { $('gateScreen').hidden = true; $('gateScreen').removeAttribute('data-loading'); }
     $('lockScreen').hidden = false;
     var who = $('lockWho');
     if (who) {
@@ -2886,13 +2943,28 @@
 
   function enterApp() {
     lsSet(HUB_LAST_KEY, 'ledger');
-    $('gateScreen').hidden = true;
-    if ($('lockScreen')) $('lockScreen').hidden = true;
-    $('appRoot').hidden = false;
     applyUserUi();
     renderAll();
-    loadRemote();
     aiSyncShared();
+    return showLoadingThenApp();
+  }
+
+  function waitMs(ms) { return new Promise(function (res) { window.setTimeout(res, ms); }); }
+
+  /* 첫 로딩: 게이트의 로딩 안내를 보여 준 채 원격 데이터를 기다리고, 다 오면 앱을 한 번에 연다.
+     네트워크가 없거나 BOOT_WAIT_MS를 넘기면 기기에 있던 자료로 바로 넘어간다. */
+  async function showLoadingThenApp() {
+    var gate = $('gateScreen');
+    $('appRoot').hidden = true;
+    if ($('lockScreen')) $('lockScreen').hidden = true;
+    if (gate) { gate.hidden = false; gate.setAttribute('data-loading', '1'); }
+    var msg = $('gateMsg'); if (msg) msg.textContent = '데이터를 불러오는 중…';
+    if (navigator.onLine !== false) {
+      try { await Promise.race([loadRemote(), waitMs(BOOT_WAIT_MS)]); } catch (e) { /* 캐시로 계속 */ }
+    }
+    renderAll();
+    if (gate) { gate.hidden = true; gate.removeAttribute('data-loading'); }
+    $('appRoot').hidden = false;
   }
 
   async function loadRemote() {
