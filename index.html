@@ -2996,5 +2996,398 @@
   boot();
 })();
 </script>
+<!-- 💬 요청하기 — AI 사무실 접수함으로 보내기 -->
+<style>
+  .askq-fab{
+    position:fixed; right:calc(14px + env(safe-area-inset-right,0px)); bottom:calc(84px + env(safe-area-inset-bottom,0px));
+    z-index:66; display:inline-flex; align-items:center; gap:6px; min-height:44px; padding:0 15px 0 14px;
+    border:1.5px solid rgba(255,255,255,.92); border-radius:999px; cursor:pointer; touch-action:manipulation;
+    background:linear-gradient(135deg,#ffffff,#f5f0ff); color:#53418c; font-family:inherit;
+    font-size:13px; font-weight:900; letter-spacing:-.01em;
+    box-shadow:0 10px 24px rgba(74,56,130,.20), 0 2px 6px rgba(74,56,130,.10);
+  }
+  .askq-fab:active{ transform:translateY(1px) scale(.99); }
+  .askq-sheet{
+    position:fixed; inset:0; z-index:200; display:flex; align-items:flex-end; justify-content:center;
+    background:rgba(38,32,54,.42); -webkit-backdrop-filter:blur(3px); backdrop-filter:blur(3px);
+    overscroll-behavior:contain;
+  }
+  .askq-card{
+    width:100%; max-width:460px; max-height:min(88vh,660px); overflow:auto; display:flex; flex-direction:column; gap:11px;
+    background:#fff; border-radius:24px 24px 0 0; box-shadow:0 -14px 44px rgba(40,30,60,.24);
+    padding:16px 16px calc(16px + env(safe-area-inset-bottom,0px));
+    -webkit-overflow-scrolling:touch; overscroll-behavior:contain;
+  }
+  .askq-head{ display:flex; align-items:center; justify-content:space-between; gap:10px; }
+  .askq-head h2{ margin:0; font-size:17px; font-weight:900; letter-spacing:-.02em; color:#332a4d; }
+  .askq-x{
+    flex:0 0 auto; width:34px; height:34px; border:none; border-radius:12px; background:#f3f0fa; color:#6b6288;
+    font-size:14px; font-weight:900; cursor:pointer; line-height:1;
+  }
+  .askq-hint{ margin:0; font-size:12.5px; font-weight:700; line-height:1.62; color:#7d7498; }
+  .askq-kinds{ display:flex; gap:7px; flex-wrap:wrap; }
+  .askq-kind{
+    min-height:38px; padding:8px 14px; border:1.5px solid #e7e1f4; border-radius:999px; background:#fbfaff;
+    color:#5c5183; font-family:inherit; font-size:12.5px; font-weight:900; cursor:pointer; touch-action:manipulation;
+  }
+  .askq-kind.on{ background:#efe9ff; border-color:#b9a6f5; color:#4a3498; }
+  .askq-ta{
+    width:100%; box-sizing:border-box; min-height:116px; resize:vertical; padding:12px 13px;
+    border:1.5px solid #e7e1f4; border-radius:16px; background:#fdfcff; color:#332a4d;
+    font-family:inherit; font-size:16px; font-weight:700; line-height:1.55;
+  }
+  .askq-ta:focus{ outline:none; border-color:#b9a6f5; background:#fff; }
+  .askq-msg{ margin:0; min-height:15px; font-size:12px; font-weight:800; color:#c6415a; }
+  .askq-msg.ok{ color:#0f8a63; }
+  .askq-send{
+    width:100%; min-height:48px; border:none; border-radius:15px; cursor:pointer; font-family:inherit;
+    background:linear-gradient(135deg,#8a6bf0,#6a4bd8); color:#fff; font-size:15px; font-weight:900;
+    box-shadow:0 10px 22px rgba(106,75,216,.28);
+  }
+  .askq-send[disabled]{ opacity:.62; cursor:default; box-shadow:none; }
+  .askq-toast{
+    position:fixed; left:50%; bottom:calc(78px + env(safe-area-inset-bottom,0px)); transform:translateX(-50%);
+    z-index:210; max-width:calc(100vw - 32px); padding:11px 16px; border-radius:14px;
+    background:#2c2440; color:#fff; font-size:13px; font-weight:800; text-align:center; line-height:1.45;
+    box-shadow:0 14px 32px rgba(0,0,0,.26); pointer-events:none;
+  }
+  @media (min-width:640px){
+    .askq-sheet{ align-items:center; padding:22px; }
+    .askq-card{ border-radius:26px; max-height:min(84vh,620px); padding:20px 20px 18px; }
+  }
+</style>
+
+<button class="askq-fab" id="askqFab" type="button" hidden>💬 요청하기</button>
+
+<div class="askq-sheet" id="askqSheet" hidden role="dialog" aria-modal="true" aria-labelledby="askqTitle">
+  <div class="askq-card">
+    <div class="askq-head">
+      <h2 id="askqTitle">💬 요청하기</h2>
+      <button class="askq-x" id="askqClose" type="button" aria-label="요청 창 닫기">✕</button>
+    </div>
+    <p class="askq-hint">불편한 점이나 바라는 점을 적어 주세요. AI 사무실에서 확인하고 정리해요.</p>
+    <div class="askq-kinds" id="askqKinds" role="group" aria-label="요청 종류">
+      <button class="askq-kind" type="button" data-k="불편" aria-pressed="false">😣 불편</button>
+      <button class="askq-kind on" type="button" data-k="요청" aria-pressed="true">🙏 요청</button>
+      <button class="askq-kind" type="button" data-k="질문" aria-pressed="false">❓ 질문</button>
+    </div>
+    <textarea class="askq-ta" id="askqTa" maxlength="1000" placeholder="예: 재료 이름이 작아서 잘 안 보여요. 조금 크게 해 주세요."></textarea>
+    <p class="askq-msg" id="askqMsg"></p>
+    <button class="askq-send" id="askqSend" type="button">보내기</button>
+  </div>
+</div>
+
+<div class="askq-toast" id="askqToast" role="status" aria-live="polite" hidden></div>
+
+<script>
+(function () {
+  'use strict';
+
+  var SOURCE = 'ledger';
+  var SOURCE_LABEL = '가계부';
+  var ROOT_ID = 'appRoot';
+
+  var DEVICE_KEY = 'kidsDashboard.device.v1';
+  var SESSION_KEY = 'kidsDashboard.session.v1';
+  var OWNER = 'jadenfamily';
+  var REPO = 'kids-dashboard-data';
+  var BRANCH = 'main';
+  var FILE = 'ai-office/inbox.json';
+  var API = 'https://api.github.com/repos/' + OWNER + '/' + REPO + '/contents/' + FILE;
+
+  var fab = document.getElementById('askqFab');
+  var sheet = document.getElementById('askqSheet');
+  var ta = document.getElementById('askqTa');
+  var msg = document.getElementById('askqMsg');
+  var sendBtn = document.getElementById('askqSend');
+  var kinds = document.getElementById('askqKinds');
+  var toastEl = document.getElementById('askqToast');
+  if (!fab || !sheet || !ta || !sendBtn) return;
+
+  var kind = '요청';
+  var draft = '';
+  var sending = false;
+
+  /* ---------- 저장된 기기·로그인 정보 ---------- */
+  function lsGet(k) { try { return window.localStorage.getItem(k); } catch (e) { return null; } }
+  function ssGet(k) { try { return window.sessionStorage.getItem(k); } catch (e) { return null; } }
+  function device() {
+    try {
+      var j = JSON.parse(lsGet(DEVICE_KEY) || 'null');
+      if (j && j.token) return j;
+    } catch (e) { /* 무시 */ }
+    return null;
+  }
+  function userInfo() {
+    var raw = lsGet(SESSION_KEY) || ssGet(SESSION_KEY);
+    if (!raw) return { id: '', name: '' };
+    var j = null;
+    try { j = JSON.parse(raw); } catch (e) { j = null; }
+    if (!j) return { id: '', name: '' };
+    return { id: String(j.id || ''), name: String(j.name || '') };
+  }
+  function currentName() {
+    var u = userInfo();
+    if (u.name) return u.name;
+    if (!u.id) return '';
+    /* 세션에 이름이 없으면 계정 목록에서 이름을 찾는다 */
+    try {
+      var users = JSON.parse(lsGet('kidsDashboard.users.v1') || 'null');
+      var list = (users && users.users) || [];
+      for (var i = 0; i < list.length; i++) {
+        if (list[i] && String(list[i].id) === u.id) return String(list[i].name || u.id);
+      }
+    } catch (e) { /* 무시 */ }
+    return '';
+  }
+
+  /* ---------- 버튼 노출: 화면에 들어왔을 때만 ---------- */
+  var rootEl = document.getElementById(ROOT_ID);
+  function syncVis() {
+    var on = !!(rootEl && !rootEl.hidden) && !!device();
+    fab.hidden = !on;
+    if (!on && !sheet.hidden) closeSheet();
+  }
+  if (rootEl) {
+    try {
+      new MutationObserver(syncVis).observe(rootEl, { attributes: true, attributeFilter: ['hidden', 'style', 'class'] });
+    } catch (e) { /* 무시 */ }
+  }
+  syncVis();
+  window.setTimeout(syncVis, 500);
+  window.setTimeout(syncVis, 1800);
+  window.addEventListener('load', syncVis);
+
+  /* ---------- iOS 뒷배경 스크롤 잠금 ---------- */
+  var lock = { on: false, y: 0 };
+  function lockScroll() {
+    if (lock.on) return;
+    lock.y = window.scrollY || window.pageYOffset || 0;
+    var b = document.body, h = document.documentElement;
+    b.style.position = 'fixed';
+    b.style.top = '-' + lock.y + 'px';
+    b.style.left = '0';
+    b.style.right = '0';
+    b.style.width = '100%';
+    b.style.overflow = 'hidden';
+    h.style.overflow = 'hidden';
+    lock.on = true;
+  }
+  function unlockScroll() {
+    if (!lock.on) return;
+    var b = document.body, h = document.documentElement;
+    b.style.position = '';
+    b.style.top = '';
+    b.style.left = '';
+    b.style.right = '';
+    b.style.width = '';
+    b.style.overflow = '';
+    h.style.overflow = '';
+    lock.on = false;
+    window.scrollTo(0, lock.y);
+  }
+
+  /* ---------- 창 열기 / 닫기 ---------- */
+  function setMsg(text, ok) {
+    msg.textContent = text || '';
+    msg.className = 'askq-msg' + (ok ? ' ok' : '');
+  }
+  function openSheet() {
+    if (!device()) return;
+    setMsg('');
+    ta.value = draft || '';
+    sheet.hidden = false;
+    lockScroll();
+    try { ta.focus({ preventScroll: true }); } catch (e) { /* 무시 */ }
+  }
+  function closeSheet() {
+    draft = ta.value || '';
+    sheet.hidden = true;
+    unlockScroll();
+    try { fab.focus({ preventScroll: true }); } catch (e) { /* 무시 */ }
+  }
+  fab.addEventListener('click', openSheet);
+  document.getElementById('askqClose').addEventListener('click', closeSheet);
+  sheet.addEventListener('click', function (ev) { if (ev.target === sheet) closeSheet(); });
+  document.addEventListener('keydown', function (ev) {
+    if (ev.key === 'Escape' && !sheet.hidden) closeSheet();
+  });
+
+  kinds.addEventListener('click', function (ev) {
+    var b = ev.target && ev.target.closest ? ev.target.closest('.askq-kind') : null;
+    if (!b) return;
+    kind = String(b.getAttribute('data-k') || '요청');
+    var all = kinds.querySelectorAll('.askq-kind');
+    for (var i = 0; i < all.length; i++) {
+      var on = all[i] === b;
+      all[i].className = 'askq-kind' + (on ? ' on' : '');
+      all[i].setAttribute('aria-pressed', on ? 'true' : 'false');
+    }
+  });
+
+  /* ---------- 보조 함수 ---------- */
+  function pad(n) { return (n < 10 ? '0' : '') + n; }
+  function stamp(d) {
+    return '' + d.getFullYear() + pad(d.getMonth() + 1) + pad(d.getDate()) + pad(d.getHours()) + pad(d.getMinutes()) + pad(d.getSeconds());
+  }
+  function iso(d) { return d.toISOString().replace(/\.\d{3}Z$/, 'Z'); }
+  function rand4() {
+    var s = '0123456789abcdef', out = '';
+    try {
+      var b = new Uint8Array(4);
+      window.crypto.getRandomValues(b);
+      for (var i = 0; i < 4; i++) out += s.charAt(b[i] % 16);
+    } catch (e) {
+      for (var j = 0; j < 4; j++) out += s.charAt(Math.floor(Math.random() * 16));
+    }
+    return out;
+  }
+  function b64enc(str) {
+    var bytes = new TextEncoder().encode(String(str));
+    var bin = '';
+    for (var i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
+    return window.btoa(bin);
+  }
+  function b64dec(b64) {
+    var bin = window.atob(String(b64 || '').replace(/\s/g, ''));
+    var bytes = new Uint8Array(bin.length);
+    for (var i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    if (window.TextDecoder) return new TextDecoder('utf-8').decode(bytes);
+    return decodeURIComponent(escape(bin));
+  }
+  function sleep(ms) { return new Promise(function (r) { window.setTimeout(r, ms); }); }
+  function headers(token) {
+    return {
+      'Authorization': 'Bearer ' + token,
+      'Accept': 'application/vnd.github+json',
+      'X-GitHub-Api-Version': '2022-11-28'
+    };
+  }
+  function failText(status) {
+    if (status === 401) return '기기 연결이 풀렸어요. 가족 홈에서 다시 연결해 주세요.';
+    if (status === 403) return '보낼 권한이 없어요. 가족 홈에서 다시 연결해 주세요.';
+    return '지금은 보낼 수 없어요. 잠시 뒤 다시 해 주세요.';
+  }
+  function toast(text) {
+    toastEl.textContent = text;
+    toastEl.hidden = false;
+    window.clearTimeout(toast._t);
+    toast._t = window.setTimeout(function () { toastEl.hidden = true; }, 3200);
+  }
+
+  /* ---------- 접수함 읽기 / 덧붙여 저장 ---------- */
+  async function readInbox(token) {
+    var res;
+    try {
+      res = await window.fetch(API + '?ref=' + encodeURIComponent(BRANCH) + '&_=' + Date.now(), {
+        headers: headers(token), cache: 'no-store'
+      });
+    } catch (e) {
+      return { ok: false, status: 0, error: '인터넷 연결을 확인해 주세요.' };
+    }
+    if (res.status === 404) {
+      return { ok: true, data: { version: 1, updatedAt: iso(new Date()), items: [] }, sha: null };
+    }
+    if (!res.ok) return { ok: false, status: res.status, error: failText(res.status) };
+    var j = null;
+    try { j = await res.json(); } catch (e) { j = null; }
+    if (!j) return { ok: false, status: 0, error: '지금은 보낼 수 없어요. 잠시 뒤 다시 해 주세요.' };
+    var data = null;
+    try { data = JSON.parse(b64dec(j.content || '')); } catch (e) { data = null; }
+    if (!data || typeof data !== 'object' || Object.prototype.toString.call(data) === '[object Array]') {
+      data = { version: 1, updatedAt: iso(new Date()), items: [] };
+    }
+    if (Object.prototype.toString.call(data.items) !== '[object Array]') data.items = [];
+    return { ok: true, data: data, sha: j.sha || null };
+  }
+
+  async function saveItem(token, item) {
+    var lastError = '';
+    for (var attempt = 0; attempt < 3; attempt++) { /* 처음 1회 + 충돌 시 최대 2회 재시도 */
+      var cur = await readInbox(token);
+      if (!cur.ok) return cur;
+      var obj = cur.data;
+      var items = obj.items;
+      var already = false;
+      for (var i = 0; i < items.length; i++) {
+        if (items[i] && String(items[i].id) === item.id) { already = true; break; }
+      }
+      if (!already) items.push(item);
+      obj.version = Number(obj.version) || 1;
+      obj.updatedAt = iso(new Date());
+      var payload = {
+        message: '💬 요청 접수: ' + SOURCE_LABEL + ' · ' + kind,
+        content: b64enc(JSON.stringify(obj, null, 2)),
+        branch: BRANCH
+      };
+      if (cur.sha) payload.sha = cur.sha;
+      var res;
+      try {
+        res = await window.fetch(API, { method: 'PUT', headers: headers(token), body: JSON.stringify(payload) });
+      } catch (e) {
+        return { ok: false, status: 0, error: '인터넷 연결을 확인해 주세요.' };
+      }
+      if (res.ok) return { ok: true };
+      if (res.status === 409 || res.status === 422) {
+        lastError = '다른 기기에서 먼저 저장했어요.';
+        await sleep(260);
+        continue;
+      }
+      return { ok: false, status: res.status, error: failText(res.status) };
+    }
+    return { ok: false, status: 409, error: lastError + ' 잠시 뒤 다시 보내 주세요.' };
+  }
+
+  async function send() {
+    if (sending) return;
+    var text = String(ta.value || '').trim();
+    if (!text) {
+      setMsg('하고 싶은 말을 먼저 적어 주세요.');
+      try { ta.focus({ preventScroll: true }); } catch (e) { /* 무시 */ }
+      return;
+    }
+    var dev = device();
+    if (!dev || !dev.token) {
+      setMsg('기기 연결이 풀렸어요. 가족 홈에서 다시 연결해 주세요.');
+      return;
+    }
+    sending = true;
+    sendBtn.disabled = true;
+    sendBtn.textContent = '보내는 중…';
+    setMsg('');
+    var now = new Date();
+    var item = {
+      id: 'ib-' + stamp(now) + '-' + rand4(),
+      at: iso(now),
+      source: SOURCE,
+      sourceLabel: SOURCE_LABEL,
+      kind: kind,
+      name: currentName(),
+      text: text,
+      status: 'new',
+      handledAt: null
+    };
+    if (!item.name) delete item.name;
+    var r = await saveItem(dev.token, item);
+    sending = false;
+    sendBtn.disabled = false;
+    sendBtn.textContent = '보내기';
+    if (r && r.ok) {
+      draft = '';
+      ta.value = '';
+      sheet.hidden = true;
+      unlockScroll();
+      toast('요청을 보냈어요. AI 사무실에서 확인할게요 💬');
+      return;
+    }
+    setMsg((r && r.error) || '보내지 못했어요. 잠시 뒤 다시 해 주세요.');
+  }
+  sendBtn.addEventListener('click', send);
+  ta.addEventListener('keydown', function (ev) {
+    if ((ev.metaKey || ev.ctrlKey) && ev.key === 'Enter') { ev.preventDefault(); send(); }
+  });
+})();
+</script>
+
 </body>
 </html>
