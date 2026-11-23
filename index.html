@@ -3046,9 +3046,10 @@
   }
   .askq-send[disabled]{ opacity:.62; cursor:default; box-shadow:none; }
   .askq-toast{
-    position:fixed; left:50%; bottom:calc(78px + env(safe-area-inset-bottom,0px)); transform:translateX(-50%);
-    z-index:210; max-width:calc(100vw - 32px); padding:11px 16px; border-radius:14px;
-    background:#2c2440; color:#fff; font-size:13px; font-weight:800; text-align:center; line-height:1.45;
+    position:fixed; left:50%; bottom:calc(142px + env(safe-area-inset-bottom,0px)); transform:translateX(-50%);
+    z-index:210; width:max-content; max-width:min(340px,calc(100vw - 32px)); padding:11px 16px; border-radius:14px;
+    background:#2c2440; color:#fff; font-size:13px; font-weight:800; text-align:center; line-height:1.5;
+    word-break:keep-all;
     box-shadow:0 14px 32px rgba(0,0,0,.26); pointer-events:none;
   }
   @media (min-width:640px){
