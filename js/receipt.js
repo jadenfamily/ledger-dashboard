@@ -8,6 +8,7 @@
   function aiHasKey() { var f = L.aiHasKey; return f.apply(this, arguments); }
   function aiJSON() { var f = L.aiJSON; return f.apply(this, arguments); }
   function aiProvider() { var f = L.aiProvider; return f.apply(this, arguments); }
+  function aiSummary() { var f = L.aiSummary; return f.apply(this, arguments); }
   function markDirty() { var f = L.markDirty; return f.apply(this, arguments); }
   function providerLabel() { var f = L.providerLabel; return f.apply(this, arguments); }
   function renderAll() { var f = L.renderAll; return f.apply(this, arguments); }
@@ -55,6 +56,7 @@
   function msgForError(e) {
     var m = (e && e.message) ? e.message : String(e || '');
     if (m === 'NO_KEY') return '⚙️ 설정에서 영수증 AI 키를 먼저 넣어 주세요.';
+    if (m === 'NO_PHOTO') return '영수증 사진을 읽을 AI가 없어요. ⚙️ 설정에서 Gemini나 OpenRouter 키를 넣어 주세요.';
     if (m === 'TIMEOUT' || /timeout|abort/i.test(m)) return 'AI 응답이 너무 늦어서 멈췄어요. 잠시 뒤 다시 시도해 주세요.';
     if (/API key not valid|API_KEY_INVALID|API key expired|invalid api key|incorrect api key|401/i.test(m)) return 'AI 키가 올바르지 않아요. ⚙️ 설정에서 확인해 주세요.';
     if (/quota|RESOURCE_EXHAUSTED|429|rate limit|한도/i.test(m)) return 'AI 무료 사용량을 다 썼어요. 잠시 후 다시 시도해 주세요.';
@@ -91,6 +93,13 @@
       reader.readAsDataURL(file);
     });
   }
+  function receiptReadyText() {
+    var sum = aiSummary();
+    if (!sum.any) return '먼저 ⚙️ 설정에서 영수증 AI 키를 넣어 주세요. 키 없이도 직접 기록할 수 있어요.';
+    if (!sum.photos) return providerLabel(sum.provider) + '는 사진 읽기를 지원하지 않아 ' + sum.photoProviders.map(providerLabel).join('·') + '로 읽어요.';
+    if (aiHasKey(sum.provider)) return providerLabel(sum.provider) + '로 읽을 준비가 됐어요.';
+    return '키가 있는 다른 AI로 읽어요.';
+  }
   function renderReceipt() {
     var body = $('receiptBody');
     if (!body) return;
@@ -98,7 +107,7 @@
     if (r.step === 'idle') {
       body.innerHTML = '<p class="hint">영수증 사진을 고르면 AI가 결제일·상호·금액·카테고리를 읽어 드려요. 확인하고 저장만 누르면 돼요.</p>' +
         '<input id="recFile" type="file" accept="image/*" capture="environment" style="font-size:13px;font-weight:800">' +
-        '<p class="hint">' + (aiHasKey(aiProvider()) ? providerLabel(aiProvider()) + '로 읽을 준비가 됐어요.' : (aiAnyKey() ? '키가 있는 다른 AI로 읽어요.' : '먼저 ⚙️ 설정에서 영수증 AI 키를 넣어 주세요. 키 없이도 직접 기록할 수 있어요.')) + '</p>';
+        '<p class="hint">' + receiptReadyText() + '</p>';
     } else if (r.step === 'busy') {
       body.innerHTML = (r.thumb ? '<img class="rec-thumb" src="' + r.thumb + '" alt="영수증 사진">' : '') +
         '<p class="msg">🔍 영수증을 읽는 중…</p>' +
@@ -143,7 +152,7 @@
       renderReceipt();
       var mime = (/^data:(.*?);/.exec(dataUrl) || [])[1] || 'image/jpeg';
       var b64 = dataUrl.split(',')[1];
-      var out = await aiJSON({ prompt: PROMPT_RECEIPT, mime: mime, b64: b64, schema: SCHEMA_RECEIPT });
+      var out = await aiJSON({ prompt: PROMPT_RECEIPT, mime: mime, b64: b64, schema: SCHEMA_RECEIPT, image: true });
       var items = (out && out.items) || [];
       ui.rec = {
         step: 'review', thumb: dataUrl, error: '',

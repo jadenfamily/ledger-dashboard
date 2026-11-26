@@ -83,6 +83,7 @@
           '<button class="btn sm" type="button" data-act="key-save">저장</button>' +
           (sum.keys[sum.provider] ? '<button class="btn sm ghost" type="button" data-act="key-clear">지우기</button>' : '') + '</div>') +
         '<p class="hint" style="margin-top:6px">' + aiStatusLine(sum) + '</p>' +
+        (sum.photos ? '' : '<p class="hint">이 AI는 지금 사진 읽기를 지원하는 모델이 없어서, 영수증은 ' + esc(sum.photoProviders.map(providerLabel).join('·')) + '로 읽어요.</p>') +
         (sum.origin === 'shared' ? '<p class="hint">가족이 함께 쓰는 키라서 한 번만 넣으면 모든 기기에서 그대로 써요.</p>' : '') +
         (ui.setMsg ? '<p class="msg ' + (ui.setMsg.indexOf('err:') === 0 ? 'err' : '') + '">' + esc(ui.setMsg.replace(/^err:/, '')) + '</p>' : '') +
       '</div>' +

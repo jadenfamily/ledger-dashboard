@@ -36,12 +36,14 @@
 
   var GEMINI_MODELS = ['gemini-flash-lite-latest', 'gemini-3.1-flash-lite', 'gemini-3.5-flash-lite', 'gemini-3.5-flash'];
   var OPENROUTER_MODELS = ['nvidia/nemotron-3.5-super-vl:free', 'google/gemma-4-31b-it:free', 'google/gemma-4-26b-a4b-it:free'];
-  var GROQ_MODELS = ['meta-llama/llama-4-scout-17b-16e-instruct', 'meta-llama/llama-4-maverick-17b-128e-instruct'];
+  /* Groq은 지금 계정에서 사진을 읽는 모델을 제공하지 않아요(2026-11 목록 기준).
+     목록에 사진 모델이 다시 올라오면 photos:true 로 바꾸면 그대로 써요. */
+  var GROQ_MODELS = ['openai/gpt-oss-120b', 'qwen/qwen3.8-27b', 'openai/gpt-oss-20b'];
 
   var PROVIDERS = {
-    gemini: { id: 'gemini', label: 'Gemini', models: GEMINI_MODELS },
-    openrouter: { id: 'openrouter', label: 'OpenRouter', models: OPENROUTER_MODELS },
-    groq: { id: 'groq', label: 'Groq', models: GROQ_MODELS }
+    gemini: { id: 'gemini', label: 'Gemini', models: GEMINI_MODELS, photos: true },
+    openrouter: { id: 'openrouter', label: 'OpenRouter', models: OPENROUTER_MODELS, photos: true },
+    groq: { id: 'groq', label: 'Groq', models: GROQ_MODELS, photos: false }
   };
   var PROVIDER_ORDER = ['gemini', 'openrouter', 'groq'];
   var AI_LOG = [];   /* 최근 호출 기록 (문제 확인용) */
@@ -413,6 +415,10 @@
     if (res.status === 404 || (res.status === 400 && /model|not found|no longer available|unsupported|지원하지/i.test(em))) {
       throw aiErr('이 모델은 지금 쓸 수 없어요', { nextModel: true, status: res.status });
     }
+    /* 잠시 붐비는 응답은 다른 모델로 한 번 더 */
+    if (res.status === 500 || res.status === 503 || res.status === 529) {
+      throw aiErr(em || ('HTTP ' + res.status), { nextModel: true, status: res.status });
+    }
     if (!res.ok) throw aiErr(em || ('HTTP ' + res.status), { status: res.status });
     var c = (json && json.candidates && json.candidates[0]) || null;
     var parts = (c && c.content && c.content.parts) || [];
@@ -460,6 +466,10 @@
         throw aiErr('이 모델은 지금 쓸 수 없어요', { nextModel: true, status: res.status });
       }
     }
+    /* 잠시 붐비는 응답은 다른 모델로 한 번 더 */
+    if (res.status === 500 || res.status === 503 || res.status === 529) {
+      throw aiErr(em || ('HTTP ' + res.status), { nextModel: true, status: res.status });
+    }
     if (!res.ok) throw aiErr(em || ('HTTP ' + res.status), { status: res.status });
     var ch = (json && json.choices && json.choices[0]) || null;
     var out = ch && ch.message ? String(ch.message.content || '') : '';
@@ -477,15 +487,19 @@
     var started = Date.now();
     var errors = [];
     var tried = 0;
-    for (var c = 0; c < chain.length; c++) {
-      var pid = chain[c];
-      if (!aiHasKey(pid)) continue;
+
+    function usable(pid) {
+      if (!aiHasKey(pid)) return false;
+      if (req.image && PROVIDERS[pid] && PROVIDERS[pid].photos === false) return false;
+      return true;
+    }
+    /* 한 제공자를 끝까지(모델 여러 개) 시도하고, 되면 결과를 돌려줘요 */
+    async function attempt(pid) {
       tried++;
-      if (Date.now() - started > AI_BUDGET_MS - 4000) break;
       var models = modelOrder(pid);
       for (var m = 0; m < models.length; m++) {
         var left = Math.min(AI_TIMEOUT_MS, AI_BUDGET_MS - (Date.now() - started));
-        if (left < 3000) break;
+        if (left < 3000) return null;
         var t0 = Date.now();
         try {
           var out = pid === 'gemini'
@@ -501,11 +515,29 @@
           aiLog(pid, models[m], Date.now() - t0, (e && e.message) || 'error');
           if (e && e.nextModel) continue;   /* 이 모델만 못 쓰는 경우 → 다음 모델 */
           errors.push(e);
-          break;                             /* 제공자 전체 문제(429·타임아웃 등) → 다음 제공자 */
+          return null;                      /* 제공자 전체 문제(429·타임아웃 등) → 다음 제공자 */
         }
       }
+      return null;
     }
-    if (!tried) throw aiErr('NO_KEY');
+
+    for (var c = 0; c < chain.length; c++) {
+      var pid = chain[c];
+      if (!usable(pid)) continue;
+      if (Date.now() - started > AI_BUDGET_MS - 4000) break;
+      var got = await attempt(pid);
+      if (got) return got;
+    }
+    /* 다 실패했어도 시간이 남아 있으면 고른 AI로 한 번만 더 (잠깐 붐비는 경우는 다시 되기도 해요).
+       응답이 아예 없던(타임아웃) 경우는 기다리게만 하니 다시 시도하지 않아요. */
+    var lastErr = errors.length ? errors[errors.length - 1] : null;
+    var wasTimeout = !!(lastErr && (lastErr.timeout || lastErr.message === 'TIMEOUT'));
+    if (usable(first) && errors.length && !wasTimeout && (AI_BUDGET_MS - (Date.now() - started)) > 12000) {
+      aiLog(first, '(다시 시도)', 0, 'retry');
+      var again = await attempt(first);
+      if (again) return again;
+    }
+    if (!tried) throw aiErr(req.image ? 'NO_PHOTO' : 'NO_KEY');
     var last = errors.length ? errors[errors.length - 1] : null;
     if (last) throw last;
     throw aiErr('AI가 영수증을 읽지 못했어요.');
@@ -524,6 +556,8 @@
     return {
       provider: pick,
       label: providerLabel(pick),
+      photos: !(PROVIDERS[pick] && PROVIDERS[pick].photos === false),
+      photoProviders: PROVIDER_ORDER.filter(function (p2) { return PROVIDERS[p2] && PROVIDERS[p2].photos !== false; }),
       keys: keys,
       origin: aiKeyOrigin(pick),
       originText: aiOriginText(pick),
