@@ -176,6 +176,9 @@
     state.txns.push(t);
     markDirty('txns');
     closeModal('receiptModal');
+    /* 기록 추가 창에서 '영수증으로 채우기'로 들어온 경우엔 빈 입력창을 남기지 않아요 */
+    closeModal('txModal');
+    ui.txEdit = null;
     if (ymOf(t.date) !== ui.month) { ui.month = ymOf(t.date); saveUi(); }
     renderAll();
     toast('영수증을 기록했어요 · ' + wonW(t.amount));
