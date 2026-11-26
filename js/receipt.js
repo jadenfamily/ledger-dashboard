@@ -100,6 +100,16 @@
     if (aiHasKey(sum.provider)) return providerLabel(sum.provider) + '로 읽을 준비가 됐어요.';
     return '키가 있는 다른 AI로 읽어요.';
   }
+  /* AI가 '2026-11-26 13:05'처럼 시간을 붙여 보내도 날짜만 써요 */
+  function receiptDate(v) {
+    var s2 = String(v || '').trim();
+    if (isYmd(s2)) return s2;
+    var m = /^(\d{4})-(\d{2})-(\d{2})/.exec(s2);
+    if (m && isYmd(m[1] + '-' + m[2] + '-' + m[3])) return m[1] + '-' + m[2] + '-' + m[3];
+    var m2 = /^(\d{4})(\d{2})(\d{2})$/.exec(s2);
+    if (m2 && isYmd(m2[1] + '-' + m2[2] + '-' + m2[3])) return m2[1] + '-' + m2[2] + '-' + m2[3];
+    return todayStr();
+  }
   function renderReceipt() {
     var body = $('receiptBody');
     if (!body) return;
@@ -157,7 +167,7 @@
       ui.rec = {
         step: 'review', thumb: dataUrl, error: '',
         data: {
-          date: isYmd(out && out.date) ? out.date : todayStr(),
+          date: receiptDate(out && out.date),
           title: String((out && out.store) || '').slice(0, 60),
           amount: Math.abs(Math.round(num(out && out.total))),
           category: String((out && out.category) || '기타').replace(/[·ㆍ]/g, '/').slice(0, 20),
