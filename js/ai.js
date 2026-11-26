@@ -394,7 +394,7 @@
     var key = aiKeyOf('gemini');
     if (!key) throw aiErr('NO_KEY');
     var url = 'https://generativelanguage.googleapis.com/v1beta/models/' + encodeURIComponent(model) + ':generateContent';
-    var cfg = { temperature: 0.2, responseMimeType: 'application/json', maxOutputTokens: 1024 };
+    var cfg = { temperature: 0.2, responseMimeType: 'application/json', maxOutputTokens: 1500 };
     if (req.schema) cfg.responseSchema = req.schema;
     var body = {
       contents: [{ role: 'user', parts: [{ text: String(req.prompt || '') }, { inline_data: { mime_type: req.mime || 'image/jpeg', data: String(req.b64 || '') } }] }],
@@ -447,7 +447,7 @@
         ]
       }],
       temperature: 0.2,
-      max_tokens: 1024
+      max_tokens: 1500
     };
     var res = await fetchTimeout(url, { method: 'POST', headers: headers, body: JSON.stringify(body) }, ms);
     var txt = '';
